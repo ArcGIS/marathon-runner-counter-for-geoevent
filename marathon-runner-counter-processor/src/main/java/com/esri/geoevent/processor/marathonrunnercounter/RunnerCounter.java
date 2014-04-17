@@ -37,7 +37,8 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
   private long                                 reportInterval;
 
   private final Map<String, String>            trackCache               = new ConcurrentHashMap<String, String>();
-  private final Map<String, Long>              categoryCountCache       = new ConcurrentHashMap<String, Long>();
+  private final Map<String, Long>              matCrossedCountCache     = new ConcurrentHashMap<String, Long>();
+  private final Map<String, Long>              tweenCountCache          = new ConcurrentHashMap<String, Long>();
 
   private Messaging                            messaging;
   private GeoEventCreator                      geoEventCreator;
@@ -58,15 +59,17 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
     {
       if (autoResetCounter == true)
       {
-        for (String matId : categoryCountCache.keySet())
+        for (String matId : matCrossedCountCache.keySet())
         {
-          categoryCountCache.put(matId, 0l);
+          matCrossedCountCache.put(matId, 0L);
+          tweenCountCache.put(matId, 0L);
         }
       }
       // clear the cache
       if (clearCache == true)
       {
-        categoryCountCache.clear();
+        matCrossedCountCache.clear();
+        tweenCountCache.clear();
         trackCache.clear();
       }
     }
@@ -89,12 +92,13 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
         try
         {
           Thread.sleep(reportInterval);
-          for (String matId : categoryCountCache.keySet())
+          for (String matId : matCrossedCountCache.keySet())
           {
-            Long runners = categoryCountCache.get(matId);
+            Long matCrossedCount = matCrossedCountCache.get(matId);
+            Long tweenCount = tweenCountCache.get(matId);
             try
             {
-              send(createRunnerCounterGeoEvent(matId, runners));
+              send(createRunnerCounterGeoEvent(matId, matCrossedCount, tweenCount));
             }
             catch (MessagingException e)
             {
@@ -109,7 +113,7 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
       }
     }
     
-    private GeoEvent createRunnerCounterGeoEvent(String matId, Long runners) throws MessagingException
+    private GeoEvent createRunnerCounterGeoEvent(String matId, Long matCrossedCount, Long tweenCount) throws MessagingException
     {
       GeoEvent counterEvent = null;
       if (geoEventCreator != null && definitionUriString != null && definitionUri != null)
@@ -118,8 +122,9 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
         {
           counterEvent = geoEventCreator.create("RunnerCounter", definitionUriString);
           counterEvent.setField(0, matId);
-          counterEvent.setField(1, runners);
-          counterEvent.setField(2, new Date());
+          counterEvent.setField(1, matCrossedCount);
+          counterEvent.setField(2, tweenCount);
+          counterEvent.setField(3, new Date());
           counterEvent.setProperty(GeoEventPropertyName.TYPE, "event");
           counterEvent.setProperty(GeoEventPropertyName.OWNER_ID, getId());
           counterEvent.setProperty(GeoEventPropertyName.OWNER_URI, definitionUri);
@@ -166,19 +171,26 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
   public GeoEvent process(GeoEvent geoEvent) throws Exception
   {
     String trackId = geoEvent.getTrackId();
-    String previousCategory = trackCache.get(trackId);
-    String category = (String) geoEvent.getField(new FieldExpression(categoryField)).getValue();
+    String previousMat = trackCache.get(trackId);
+    String currentMat = (String) geoEvent.getField(new FieldExpression(categoryField)).getValue();
 
     // Add or update the status cache
-    trackCache.put(trackId, category);
-    if (!categoryCountCache.containsKey(category))
-      categoryCountCache.put(category, 0l);
+    trackCache.put(trackId, currentMat);
+    if (!tweenCountCache.containsKey(currentMat))
+      tweenCountCache.put(currentMat, 0L);
     
-    categoryCountCache.put(category, categoryCountCache.get(category) + 1);
-    if (previousCategory != null && !category.equals(previousCategory))
+    tweenCountCache.put(currentMat, tweenCountCache.get(currentMat) + 1);
+    // Adjust the previous tween count when the runner crossed the mat
+    if (previousMat != null && !currentMat.equals(previousMat))
     {
-      categoryCountCache.put(previousCategory, categoryCountCache.get(previousCategory) - 1);
+      tweenCountCache.put(previousMat, tweenCountCache.get(previousMat) - 1);
     }
+    
+    //Always accumulate the matCrossedCount
+    if (!matCrossedCountCache.containsKey(currentMat))
+      matCrossedCountCache.put(currentMat, 0L);
+    
+    matCrossedCountCache.put(currentMat, matCrossedCountCache.get(currentMat) + 1);
        
     return null;
   }
@@ -224,7 +236,8 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
       }
       */
       trackCache.clear();
-      categoryCountCache.clear();
+      matCrossedCountCache.clear();
+      tweenCountCache.clear();
     }
    
     isCounting = true;

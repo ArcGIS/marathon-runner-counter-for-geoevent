@@ -39,7 +39,8 @@ public class RunnerCounterDefinition extends GeoEventProcessorDefinitionBase
 			ged.setName("RunnerCounter");
 			List<FieldDefinition> fds = new ArrayList<FieldDefinition>();
 			fds.add(new DefaultFieldDefinition("MatId", FieldType.String, "TRACK_ID"));
-			fds.add(new DefaultFieldDefinition("RunnerCount", FieldType.Long));
+			fds.add(new DefaultFieldDefinition("MatCrossedCount", FieldType.Long));
+      fds.add(new DefaultFieldDefinition("TweenCount", FieldType.Long));
 			fds.add(new DefaultFieldDefinition("LastReceived", FieldType.Date));
 			fds.add(new DefaultFieldDefinition("Geometry", FieldType.Geometry));
 			ged.setFieldDefinitions(fds);
