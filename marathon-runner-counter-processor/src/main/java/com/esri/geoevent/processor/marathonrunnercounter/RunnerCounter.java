@@ -37,8 +37,7 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
   private long                                 reportInterval;
 
   private final Map<String, String>            trackCache               = new ConcurrentHashMap<String, String>();
-  private final Map<String, Long>              matCrossedCountCache     = new ConcurrentHashMap<String, Long>();
-  private final Map<String, Long>              tweenCountCache          = new ConcurrentHashMap<String, Long>();
+  private final Map<String, Counters>          counterCache             = new ConcurrentHashMap<String, Counters>();
 
   private Messaging                            messaging;
   private GeoEventCreator                      geoEventCreator;
@@ -52,24 +51,55 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
   private Boolean                              isCounting = false;
   private Uri                                  definitionUri;
   private String                               definitionUriString;
+  final   Object                               lock1 = new Object();
 
+  class Counters
+  {
+    private Long matCrossedCount = 0L;
+    private Long tweenCount = 0L;
+    
+    public Counters()
+    {
+      
+    }
+    
+    public Long getMatCrossedCount()
+    {
+      return matCrossedCount;
+    }
+    
+    public void setMatCrossedCount(Long matCrossedCount)
+    {
+      this.matCrossedCount = matCrossedCount;
+    }
+    
+    public Long getTweenCount()
+    {
+      return tweenCount;
+    }
+    
+    public void setTweenCount(Long tweenCount)
+    {
+      this.tweenCount = tweenCount;
+    }
+  }
+  
   class ClearCacheTask extends TimerTask
   {
     public void run()
     {
       if (autoResetCounter == true)
       {
-        for (String matId : matCrossedCountCache.keySet())
+        for (String matId : counterCache.keySet())
         {
-          matCrossedCountCache.put(matId, 0L);
-          tweenCountCache.put(matId, 0L);
+          Counters counters = new Counters();
+          counterCache.put(matId, counters);
         }
       }
       // clear the cache
       if (clearCache == true)
       {
-        matCrossedCountCache.clear();
-        tweenCountCache.clear();
+        counterCache.clear();
         trackCache.clear();
       }
     }
@@ -92,13 +122,12 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
         try
         {
           Thread.sleep(reportInterval);
-          for (String matId : matCrossedCountCache.keySet())
+          for (String matId : counterCache.keySet())
           {
-            Long matCrossedCount = matCrossedCountCache.get(matId);
-            Long tweenCount = tweenCountCache.get(matId);
+            Counters counters = counterCache.get(matId);
             try
             {
-              send(createRunnerCounterGeoEvent(matId, matCrossedCount, tweenCount));
+              send(createRunnerCounterGeoEvent(matId, counters));
             }
             catch (MessagingException e)
             {
@@ -113,7 +142,7 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
       }
     }
     
-    private GeoEvent createRunnerCounterGeoEvent(String matId, Long matCrossedCount, Long tweenCount) throws MessagingException
+    private GeoEvent createRunnerCounterGeoEvent(String matId, Counters counters) throws MessagingException
     {
       GeoEvent counterEvent = null;
       if (geoEventCreator != null && definitionUriString != null && definitionUri != null)
@@ -122,8 +151,8 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
         {
           counterEvent = geoEventCreator.create("RunnerCounter", definitionUriString);
           counterEvent.setField(0, matId);
-          counterEvent.setField(1, matCrossedCount);
-          counterEvent.setField(2, tweenCount);
+          counterEvent.setField(1, counters.matCrossedCount);
+          counterEvent.setField(2, counters.tweenCount);
           counterEvent.setField(3, new Date());
           counterEvent.setProperty(GeoEventPropertyName.TYPE, "event");
           counterEvent.setProperty(GeoEventPropertyName.OWNER_ID, getId());
@@ -174,23 +203,29 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
     String previousMat = trackCache.get(trackId);
     String currentMat = (String) geoEvent.getField(new FieldExpression(categoryField)).getValue();
 
-    // Add or update the status cache
-    trackCache.put(trackId, currentMat);
-    if (!tweenCountCache.containsKey(currentMat))
-      tweenCountCache.put(currentMat, 0L);
-    
-    tweenCountCache.put(currentMat, tweenCountCache.get(currentMat) + 1);
-    // Adjust the previous tween count when the runner crossed the mat
-    if (previousMat != null && !currentMat.equals(previousMat))
+    // Need to synchronize the Concurrent Map on write to avoid wrong counting
+    synchronized(lock1)
     {
-      tweenCountCache.put(previousMat, tweenCountCache.get(previousMat) - 1);
+      // Add or update the status cache
+      trackCache.put(trackId, currentMat);
+      if (!counterCache.containsKey(currentMat))
+      {
+        counterCache.put(currentMat, new Counters());
+      }
+    
+      Counters counters = counterCache.get(currentMat);
+      counters.tweenCount++;
+      counters.matCrossedCount++;
+      counterCache.put(currentMat, counters);
+    
+      // Adjust the previous tween count when the runner crossed the mat
+      if (previousMat != null && !currentMat.equals(previousMat))
+      {
+        Counters previousCounters = counterCache.get(previousMat);
+        previousCounters.tweenCount--;
+        counterCache.put(previousMat,  previousCounters);
+      }
     }
-    
-    //Always accumulate the matCrossedCount
-    if (!matCrossedCountCache.containsKey(currentMat))
-      matCrossedCountCache.put(currentMat, 0L);
-    
-    matCrossedCountCache.put(currentMat, matCrossedCountCache.get(currentMat) + 1);
        
     return null;
   }
@@ -222,7 +257,6 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
   {
     if (this.autoResetCounter == true || this.clearCache == true)
     {
-      /* Disable clear cache timer to simplify the code
       if (clearCacheTimer == null)
       {
         // Get the Date corresponding to 11:01:00 pm today.
@@ -234,10 +268,8 @@ public class RunnerCounter extends GeoEventProcessorBase implements EventProduce
         Long dayInMilliSeconds = 60*60*24*1000L;
         clearCacheTimer.scheduleAtFixedRate(new ClearCacheTask(), time1, dayInMilliSeconds);
       }
-      */
       trackCache.clear();
-      matCrossedCountCache.clear();
-      tweenCountCache.clear();
+      counterCache.clear();
     }
    
     isCounting = true;
