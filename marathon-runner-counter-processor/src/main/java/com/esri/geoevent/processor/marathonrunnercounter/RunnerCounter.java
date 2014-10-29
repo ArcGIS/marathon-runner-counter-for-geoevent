@@ -51,7 +51,6 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 	private Uri													definitionUri;
 	private String											definitionUriString;
 	final Object												lock1					= new Object();
-	private boolean											isInitialized	= false;
 
 	class Counters
 	{
@@ -130,7 +129,7 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 						}
 						catch (MessagingException error)
 						{
-							LOGGER.error("SEND_REPORT_ERROR", matId, error.getMessage());
+							LOGGER.error("SEND_ERROR", matId, error.getMessage());
 							LOGGER.info(error.getMessage(), error);
 						}
 					}
@@ -176,21 +175,17 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 
 	public void afterPropertiesSet()
 	{
-		if (!isInitialized)
-		{
-			reportInterval = Converter.convertToInteger(getProperty("reportInterval").getValueAsString(), 10) * 1000;
-			categoryField = getProperty("categoryField").getValueAsString();
-			autoResetCounter = Converter.convertToBoolean(getProperty("autoResetCounter").getValueAsString());
-			String[] resetTimeStr = getProperty("resetTime").getValueAsString().split(":");
-			// Get the Date corresponding to 11:01:00 pm today.
-			Calendar calendar = Calendar.getInstance();
-			calendar.set(Calendar.HOUR_OF_DAY, Integer.parseInt(resetTimeStr[0]));
-			calendar.set(Calendar.MINUTE, Integer.parseInt(resetTimeStr[1]));
-			calendar.set(Calendar.SECOND, Integer.parseInt(resetTimeStr[2]));
-			resetTime = calendar.getTime();
-			clearCache = Converter.convertToBoolean(getProperty("clearCache").getValueAsString());
-			isInitialized = true;
-		}
+		reportInterval = Converter.convertToInteger(getProperty("reportInterval").getValueAsString(), 10) * 1000;
+		categoryField = getProperty("categoryField").getValueAsString();
+		autoResetCounter = Converter.convertToBoolean(getProperty("autoResetCounter").getValueAsString());
+		String[] resetTimeStr = getProperty("resetTime").getValueAsString().split(":");
+		// Get the Date corresponding to 11:01:00 pm today.
+		Calendar calendar = Calendar.getInstance();
+		calendar.set(Calendar.HOUR_OF_DAY, Integer.parseInt(resetTimeStr[0]));
+		calendar.set(Calendar.MINUTE, Integer.parseInt(resetTimeStr[1]));
+		calendar.set(Calendar.SECOND, Integer.parseInt(resetTimeStr[2]));
+		resetTime = calendar.getTime();
+		clearCache = Converter.convertToBoolean(getProperty("clearCache").getValueAsString());
 	}
 
 	@Override
