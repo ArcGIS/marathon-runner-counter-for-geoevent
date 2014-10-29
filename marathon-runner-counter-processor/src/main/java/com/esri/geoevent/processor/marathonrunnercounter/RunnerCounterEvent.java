@@ -1,15 +1,15 @@
 package com.esri.geoevent.processor.marathonrunnercounter;
 
-import com.esri.ges.spatial.Geometry;
+import com.esri.core.geometry.MapGeometry;
 
 public class RunnerCounterEvent
 {
-  private Geometry geometry;
+  private MapGeometry geometry;
 	private String category;
 	private long eventCount;
 	private boolean stopMonitoring;
 
-	public RunnerCounterEvent(Geometry geometry, String category, long eventCount, boolean stopMonitoring)
+	public RunnerCounterEvent(MapGeometry geometry, String category, long eventCount, boolean stopMonitoring)
 	{
 	  this.geometry = geometry;
 		this.category = category;
@@ -17,7 +17,7 @@ public class RunnerCounterEvent
 		this.stopMonitoring = stopMonitoring;
 	}
 
-	public Geometry getGeometry()
+	public MapGeometry getGeometry()
 	{
 	  return geometry;
 	}
