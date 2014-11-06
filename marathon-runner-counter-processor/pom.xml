@@ -10,8 +10,6 @@
 	<artifactId>marathon-runner-counter-processor</artifactId>
 	<name>Esri :: GeoEvent :: Processor :: MarathonRunnerCounter</name>
 	<packaging>bundle</packaging>
-	<dependencies>
-	</dependencies>
 	<build>
 		<plugins>
 			<plugin>
