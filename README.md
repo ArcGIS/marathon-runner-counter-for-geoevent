@@ -1,6 +1,6 @@
 # marathon-runner-counter-for-geoevent
 
-ArcGIS 10.3.x GeoEvent Extension Sample Marathon Runner Counter Processor for counting number of runner in each split on the route.
+ArcGIS 10.3 GeoEvent Extension sample Marathon Runner Counter Processor for counting number of runner in each split on the route.
 
 ![App](marathon-runner-counter-for-geoevent.png?raw=true)
 
@@ -27,7 +27,7 @@ Installing the built jar files:
 
 ## Resources
 
-* [ArcGIS GeoEvent Processor for Server Resource Center](http://links.esri.com/geoevent)
+* [ArcGIS GeoEvent Extension for Server Resources](http://links.esri.com/geoevent)
 * [ArcGIS Blog](http://blogs.esri.com/esri/arcgis/)
 * [twitter@esri](http://twitter.com/esri)
 
