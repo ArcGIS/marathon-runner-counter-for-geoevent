@@ -37,25 +37,26 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 	private long												reportInterval;
 
 	private final Map<String, String>		trackCache		= new ConcurrentHashMap<String, String>();
-	private final Map<String, Counters>	counterCache	= new ConcurrentHashMap<String, Counters>();
+	private final Map<String, Counters>	counterCache	    = new ConcurrentHashMap<String, Counters>();
 
 	private Messaging										messaging;
-	private GeoEventCreator							geoEventCreator;
-	private GeoEventProducer						geoEventProducer;
-	private Date												resetTime;
+	private GeoEventCreator									geoEventCreator;
+	private GeoEventProducer								geoEventProducer;
+	private Date											resetTime;
 	private boolean											autoResetCounter;
 	private boolean											clearCache;
-	private Timer												clearCacheTimer;
+	private Timer											clearCacheTimer;
+	private boolean											clearCacheOnStart;	
 	private String											categoryField;
-	private Boolean											isCounting		= false;
-	private Uri													definitionUri;
+	private Uri												definitionUri;
 	private String											definitionUriString;
-	final Object												lock1					= new Object();
-
+	final Object											lock1					= new Object();
+	private ReportGenerator reportGen;
+	
 	class Counters
 	{
 		private Long	matCrossedCount	= 0L;
-		private Long	tweenCount			= 0L;
+		private Long	onCourseCount	= 0L;
 
 		public Counters()
 		{
@@ -71,14 +72,14 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 			this.matCrossedCount = matCrossedCount;
 		}
 
-		public Long getTweenCount()
+		public Long getOnCourseCount()
 		{
-			return tweenCount;
+			return onCourseCount;
 		}
 
-		public void setTweenCount(Long tweenCount)
+		public void setOnCourseCount(Long onCourseCount)
 		{
-			this.tweenCount = tweenCount;
+			this.onCourseCount = onCourseCount;
 		}
 	}
 
@@ -97,8 +98,11 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 			// clear the cache
 			if (clearCache == true)
 			{
-				counterCache.clear();
-				trackCache.clear();
+				synchronized (lock1)
+				{
+					counterCache.clear();
+					trackCache.clear();
+				}
 			}
 		}
 	}
@@ -106,7 +110,8 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 	class ReportGenerator implements Runnable
 	{
 		private Long	reportInterval	= 5000L;
-
+		private volatile Boolean isRunning;
+		
 		public ReportGenerator(String category, Long reportInterval)
 		{
 			this.reportInterval = reportInterval;
@@ -115,14 +120,18 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 		@Override
 		public void run()
 		{
-			while (isCounting)
+			isRunning = true;
+			while (isRunning)
 			{
 				try
 				{
 					Thread.sleep(reportInterval);
+					//LOGGER.info("run: " + counterCache.size());
+
 					for (String matId : counterCache.keySet())
 					{
 						Counters counters = counterCache.get(matId);
+						LOGGER.trace("run: " + matId + " crossed = " + counters.matCrossedCount + " on course = " + counters.onCourseCount);
 						try
 						{
 							send(createRunnerCounterGeoEvent(matId, counters));
@@ -140,18 +149,25 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 				}
 			}
 		}
+		
+		public void stop()
+		{
+			isRunning = false;
+		}
 
 		private GeoEvent createRunnerCounterGeoEvent(String matId, Counters counters) throws MessagingException
 		{
+			//LOGGER.info("createRunnerCounterGeoEvent");
 			GeoEvent counterEvent = null;
 			if (geoEventCreator != null && definitionUriString != null && definitionUri != null)
 			{
 				try
 				{
+					//LOGGER.info("geoEventCreator: createRunnerCounterGeoEvent");
 					counterEvent = geoEventCreator.create("RunnerCounter", definitionUriString);
 					counterEvent.setField(0, matId);
 					counterEvent.setField(1, counters.matCrossedCount);
-					counterEvent.setField(2, counters.tweenCount);
+					counterEvent.setField(2, counters.onCourseCount);
 					counterEvent.setField(3, new Date());
 					counterEvent.setProperty(GeoEventPropertyName.TYPE, "event");
 					counterEvent.setProperty(GeoEventPropertyName.OWNER_ID, getId());
@@ -186,6 +202,7 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 		calendar.set(Calendar.SECOND, Integer.parseInt(resetTimeStr[2]));
 		resetTime = calendar.getTime();
 		clearCache = Converter.convertToBoolean(getProperty("clearCache").getValueAsString());
+		clearCacheOnStart = Converter.convertToBoolean(getProperty("clearCacheOnStart").getValueAsString());
 	}
 
 	@Override
@@ -207,21 +224,22 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 		{
 			// Add or update the status cache
 			trackCache.put(trackId, currentMat);
-			if (!counterCache.containsKey(currentMat))
+			if (counterCache.containsKey(currentMat) == false)
 			{
 				counterCache.put(currentMat, new Counters());
 			}
 
 			Counters counters = counterCache.get(currentMat);
-			counters.tweenCount++;
+			LOGGER.trace(currentMat + ": crossed = " + counters.matCrossedCount + ", on course = " + counters.onCourseCount);
+			counters.onCourseCount++;
 			counters.matCrossedCount++;
 			counterCache.put(currentMat, counters);
 
-			// Adjust the previous tween count when the runner crossed the mat
-			if (previousMat != null && !currentMat.equals(previousMat))
+			// Adjust the previous on-course count when the runner crossed the mat
+			if (previousMat != null && currentMat.equals(previousMat) == false)
 			{
 				Counters previousCounters = counterCache.get(previousMat);
-				previousCounters.tweenCount--;
+				previousCounters.onCourseCount--;
 				counterCache.put(previousMat, previousCounters);
 			}
 		}
@@ -252,8 +270,19 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 	}
 
 	@Override
-	public void onServiceStart()
+	public synchronized void onServiceStart()
 	{
+		if (clearCacheOnStart == true)
+		{
+			synchronized (lock1)
+			{
+				trackCache.clear();
+				counterCache.clear();
+				
+				LOGGER.info("Clear cache on Start -- TrackCache Size: " + trackCache.size() + " CounterCache Size: " + counterCache.size());
+
+			}
+		}
 		if (this.autoResetCounter == true || this.clearCache == true)
 		{
 			if (clearCacheTimer == null)
@@ -267,42 +296,36 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 				Long dayInMilliSeconds = 60 * 60 * 24 * 1000L;
 				clearCacheTimer.scheduleAtFixedRate(new ClearCacheTask(), time1, dayInMilliSeconds);
 			}
-			trackCache.clear();
-			counterCache.clear();
 		}
 
-		isCounting = true;
 		if (definition != null)
 		{
 			definitionUri = definition.getUri();
 			definitionUriString = definitionUri.toString();
 		}
-
-		ReportGenerator reportGen = new ReportGenerator(categoryField, reportInterval);
+		if (reportGen == null)
+			reportGen = new ReportGenerator(categoryField, reportInterval);
 		Thread thread = new Thread(reportGen);
 		thread.setName("Runner Counter Report Generator");
 		thread.start();
 	}
 
 	@Override
-	public void onServiceStop()
+	public synchronized void onServiceStop()
 	{
 		if (clearCacheTimer != null)
 		{
 			clearCacheTimer.cancel();
 		}
-		isCounting = false;
+		if (reportGen != null)
+			reportGen.stop();
 	}
 
 	@Override
 	public void shutdown()
 	{
+		onServiceStop();
 		super.shutdown();
-
-		if (clearCacheTimer != null)
-		{
-			clearCacheTimer.cancel();
-		}
 	}
 
 	@Override
@@ -315,7 +338,10 @@ public class RunnerCounter extends GeoEventProcessorBase implements GeoEventProd
 	public void send(GeoEvent geoEvent) throws MessagingException
 	{
 		if (geoEventProducer != null && geoEvent != null)
+		{
 			geoEventProducer.send(geoEvent);
+			//LOGGER.info("send: " + geoEvent.toString());
+		}
 	}
 
 	public void setMessaging(Messaging messaging)

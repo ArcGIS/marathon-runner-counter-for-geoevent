@@ -27,6 +27,7 @@ public class RunnerCounterDefinition extends GeoEventProcessorDefinitionBase
 			propertyDefinitions.put("autoResetCounter", new PropertyDefinition("autoResetCounter", PropertyType.Boolean, false, "Automatic Reset Counter", "Auto Reset Counter", true, false));
 			propertyDefinitions.put("resetTime", new PropertyDefinition("resetTime", PropertyType.String, "00:00:00", "Reset Counter to Zero at", "Reset Counter time", "autoResetCounter=true", false, false));
 			propertyDefinitions.put("clearCache", new PropertyDefinition("clearCache", PropertyType.Boolean, true, "Clear in-memory Cache", "Clear in-memory Cache", "autoResetCounter=true", false, false));
+			propertyDefinitions.put("clearCacheOnStart", new PropertyDefinition("clearCacheOnStart", PropertyType.Boolean, false, "Clear Cache on Start", "Clear Cache on Start", true, false));
 			// TODO: How about TrackId selection to potentially track only a
 			// subset of geoevents ???
 			GeoEventDefinition ged = new DefaultGeoEventDefinition();
@@ -34,7 +35,7 @@ public class RunnerCounterDefinition extends GeoEventProcessorDefinitionBase
 			List<FieldDefinition> fds = new ArrayList<FieldDefinition>();
 			fds.add(new DefaultFieldDefinition("MatId", FieldType.String, "TRACK_ID"));
 			fds.add(new DefaultFieldDefinition("MatCrossedCount", FieldType.Long));
-			fds.add(new DefaultFieldDefinition("TweenCount", FieldType.Long));
+			fds.add(new DefaultFieldDefinition("OnCourseCount", FieldType.Long));
 			fds.add(new DefaultFieldDefinition("LastReceived", FieldType.Date));
 			fds.add(new DefaultFieldDefinition("Geometry", FieldType.Geometry));
 			ged.setFieldDefinitions(fds);
